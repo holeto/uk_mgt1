@@ -2,172 +2,151 @@
 
 import numpy as np
 
-def evaluate_pair(
-    row_strategy: np.ndarray, col_strategy: np.ndarray,
-    row_matrix: np.ndarray, col_matrix: np.ndarray
+
+def evaluate_general_sum(
+    row_matrix: np.ndarray,
+    col_matrix: np.ndarray,
+    row_strategy: np.ndarray,
+    col_strategy: np.ndarray,
 ) -> np.ndarray:
-    """ Compute the expected utility of each player in a general-sum game.
+    """Compute the expected utility of each player in a general-sum game.
 
     Parameters
     ----------
-    row_strategy : np.ndarray
-        The row player's strategy
-    col_strategy : np.ndarray
-        The column player's strategy
     row_matrix : np.ndarray
         The row player's payoff matrix
     col_matrix : np.ndarray
         The column player's payoff matrix
+    row_strategy : np.ndarray
+        The row player's strategy
+    col_strategy : np.ndarray
+        The column player's strategy
 
     Returns
     -------
     np.ndarray
         A vector of expected utilities of the players
     """
+    print(f"Row strategy {row_strategy}")
+    print(f"Col strategy {col_strategy}")
+    print(f"Row matrix >= 0 indices: {(row_matrix >= 0).nonzero()}")
+
     #Broadcast the row strategy over the columns
     # and the column strategy over the rows
     p1_util = np.sum(row_matrix * row_strategy[..., None] * col_strategy[None, ...])
     p2_util = np.sum(col_matrix * row_strategy[..., None] * col_strategy[None, ...])
-
     return np.asarray([p1_util, p2_util])
 
 
-def evaluate(
-    row_strategy: np.ndarray, col_strategy: np.ndarray, matrix: np.ndarray
+def evaluate_zero_sum(
+    row_matrix: np.ndarray, row_strategy: np.ndarray, col_strategy: np.ndarray
 ) -> np.ndarray:
-    """ Compute the expected utility of each player in a zero-sum game.
+    """Compute the expected utility of each player in a zero-sum game.
 
     Parameters
     ----------
+    row_matrix : np.ndarray
+        The row player's payoff matrix
     row_strategy : np.ndarray
         The row player's strategy
     col_strategy : np.ndarray
         The column player's strategy
-    matrix : np.ndarray
-        The row player's payoff matrix
 
     Returns
     -------
     np.ndarray
         A vector of expected utilities of the players
     """
-    p1_util = np.sum(matrix * row_strategy[..., None] * col_strategy[None, ...])
+
+    p1_util = np.sum(row_matrix * row_strategy[..., None] * col_strategy[None, ...])
     return np.asarray([p1_util, -p1_util])
 
 
-def best_response_strategy_against_row(
-    row_strategy: np.ndarray, col_matrix: np.ndarray
+def calculate_best_response_against_row(
+    col_matrix: np.ndarray, row_strategy: np.ndarray
 ) -> np.ndarray:
-    """ Compute a pure best response strategy of the column player against the row player.
+    """Compute a pure best response for the column player against the row player.
 
     Parameters
     ----------
-    row_strategy : np.ndarray
-        The row player's strategy
     col_matrix : np.ndarray
         The column player's payoff matrix
+    row_strategy : np.ndarray
+        The row player's strategy
 
     Returns
     -------
     np.ndarray
-        The column player's strategy
+        The column player's best response
     """
-    #action values for col actions are weighted average over
-    # row actions
+
     col_action_values = np.sum(col_matrix * row_strategy[..., None], axis=0)
 
     col_br_action = np.argmax(col_action_values)
+    
+    col_actions = col_matrix.shape[1]
 
-    return col_br_action
+    #This handles one hot encoding
+    return np.eye(col_actions)[col_br_action]
 
 
-def best_response_strategy_against_col(
-    col_strategy: np.ndarray, row_matrix: np.ndarray
+def calculate_best_response_against_col(
+    row_matrix: np.ndarray, col_strategy: np.ndarray
 ) -> np.ndarray:
-    """ Compute a pure best response strategy of the row player against the column player.
+    """Compute a pure best response for the row player against the column player.
 
     Parameters
     ----------
-    col_strategy : np.ndarray
-        The column player's strategy
     row_matrix : np.ndarray
         The row player's payoff matrix
+    col_strategy : np.ndarray
+        The column player's strategy
 
     Returns
     -------
     np.ndarray
-        The row player's strategy
+        The row player's best response
     """
-    
+
     row_action_values = np.sum(row_matrix * col_strategy[None, ...], axis=1)
 
     row_br_action = np.argmax(row_action_values)
 
-    return row_br_action
+    row_actions = row_matrix.shape[0]
+    
+    #This handles one hot encoding
+    return np.eye(row_actions)[row_br_action]
 
 
 def evaluate_row_against_best_response(
-    row_strategy: np.ndarray, col_matrix: np.ndarray
-) -> np.ndarray:
-    """ Compute the utilities when the row player plays against a best response strategy.
-
-    Note that this function works only for zero-sum games
+    row_matrix: np.ndarray, col_matrix: np.ndarray, row_strategy: np.ndarray
+) -> np.float32:
+    """Compute the utility of the row player when playing against a best response strategy.
 
     Parameters
     ----------
-    row_strategy : np.ndarray
-        The row player's strategy
+    row_matrix : np.ndarray
+        The row player's payoff matrix
     col_matrix : np.ndarray
         The column player's payoff matrix
+    row_strategy : np.ndarray
+        The row player's strategy
 
     Returns
     -------
-    np.ndarray
-        A vector of expected utilities of the players
+    np.float32
+        The expected utility of the row player
     """
 
-    column_br = best_response_strategy_against_row(row_strategy, col_matrix)
-    num_actions = row_strategy.shape[0]
-    column_br_oh = np.eye(num_actions)[column_br]
-    #This is one option how to get it, another
-    # would be evaluate_both(row_stategy, column_br_oh, -col_matrix, col_matrix)
-    player_vals = evaluate(row_strategy, column_br_oh, -col_matrix)
-    return player_vals
+    column_br = calculate_best_response_against_row(col_matrix, row_strategy)
+    player_vals =  evaluate_general_sum(row_matrix, col_matrix, row_strategy, column_br)
+    return player_vals[0]
 
 
 def evaluate_col_against_best_response(
-    col_strategy: np.ndarray, row_matrix: np.ndarray
-) -> np.ndarray:
-    """ Compute the utilities when the column player plays against a best response strategy.
-
-    Note that this function works only for zero-sum games
-
-    Parameters
-    ----------
-    col_strategy : np.ndarray
-        The column player's strategy
-    row_matrix : np.ndarray
-        The row player's payoff matrix
-
-    Returns
-    -------
-    np.ndarray
-        A vector of expected utilities of the players
-    """
-    row_br = best_response_strategy_against_col(col_strategy, row_matrix)
-    num_actions = col_strategy.shape[0]
-    #This handles one-hot encoding
-    row_br_oh = np.eye(num_actions)[row_br]
-    #This is one option how to get it, another
-    # would be evaluate_both(row_stategy, column_br_oh, row_matrix, -row_matrix)
-    player_vals = evaluate(row_br_oh, col_strategy, row_matrix)
-    return player_vals
-
-
-def dominated_actions(
-    row_matrix: np.ndarray, col_matrix: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """ Find strictly dominated actions for each player.
+    row_matrix: np.ndarray, col_matrix: np.ndarray, col_strategy: np.ndarray
+) -> np.float32:
+    """Compute the utility of the column player when playing against a best response strategy.
 
     Parameters
     ----------
@@ -175,52 +154,60 @@ def dominated_actions(
         The row player's payoff matrix
     col_matrix : np.ndarray
         The column player's payoff matrix
+    col_strategy : np.ndarray
+        The column player's strategy
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
-        A sequence of indices of dominated actions for each player.
+    np.float32
+        The expected utility of the column player
+    """
+
+    row_br = calculate_best_response_against_col(row_matrix, col_strategy)
+    player_vals =  evaluate_general_sum(row_matrix, col_matrix, row_br, col_strategy)
+
+    return player_vals[1]
+
+
+def find_strictly_dominated_actions(matrix: np.ndarray) -> np.ndarray:
+    """Find strictly dominated actions for the given normal-form game.
+        finds dominated actions on the first axis. For column player,
+        send in the transposed matrix.
+
+    Parameters
+    ----------
+    matrix : np.ndarray
+        A payoff matrix of one of the players
+
+    Returns
+    -------
+    np.ndarray
+        Indices of strictly dominated actions
     """
 
     #TODO: Perhaps try to vectorize it and get rid of the for loops?
-    num_row_actions = row_matrix.shape[0]
-    num_column_actions = col_matrix.shape[1]
-    row_dominated_actions = [] #[R]
-    col_dominated_actions = [] #[C]
-    #Find dominated row actions
-    for a_r in range(num_row_actions):
+    num_row_actions = matrix.shape[0]
+    dominated_actions = [] #[R]
+    #Find strictly dominated actions actions
+    for a in range(num_row_actions):
         #get all the other actions to check if it
         #is dominated
         #[R-1, C]
-        rows_except_a = row_matrix[np.arange(num_row_actions) != a_r]
+        rows_except_a = matrix[np.arange(num_row_actions) != a]
         #[C]
-        a_row = row_matrix[a_r]
+        a_row = matrix[a]
         #Action a is dominated, if some a´ 
         # provides greater value for any action
         # of the oponent.
         if np.any(np.sum(a_row[None, ...] >= rows_except_a, axis=-1) == 0):
-            row_dominated_actions.append(a_r)
-       
-    #Find dominated column actions
-    for a_c in range(num_column_actions):
-        #get all the other actions to check if it
-        #is dominated
-        #[R, C-1]
-        cols_except_a = col_matrix[:, np.arange(num_column_actions) != a_c]
-        #[R]
-        a_col = col_matrix[:, a_c]
-        #Action a is not dominated, if it provides a greater 
-        # value than some a´ for some action of the oponent
-        if np.any(np.sum(a_col[..., None] >= cols_except_a, axis=0) == 0):
-            col_dominated_actions.append(a_c)
-    #breakpoint()
-    return np.array(row_dominated_actions), np.array(col_dominated_actions)
+            dominated_actions.append(a)
+    return np.array(dominated_actions, dtype=np.int32)
 
 
-def iterated_removal_of_dominated_actions(
+def iterated_removal_of_dominated_strategies(
     row_matrix: np.ndarray, col_matrix: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """ Run the Iterated Removal of Dominated Actions algorithm.
+    """Run Iterated Removal of Dominated Strategies.
 
     Parameters
     ----------
@@ -232,34 +219,38 @@ def iterated_removal_of_dominated_actions(
     Returns
     -------
     tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-        A pair of reduced payoff matrices and a pair of remaining actions for each player
+        Four-tuple of reduced row and column payoff matrices, and remaining row and column actions
     """
+
     r_matrix = row_matrix.copy()
     c_matrix = col_matrix.copy()
-    r_action_mask = np.ones(row_matrix.shape[0], dtype=np.bool)
-    c_actions_mask = np.ones(row_matrix.shape[1], dtype=np.bool)
+    r_actions = np.arange(row_matrix.shape[0])
+    c_actions = np.arange(row_matrix.shape[1])
     while True:
         unchanged = True
-        row_dominated, col_dominated = dominated_actions(r_matrix, c_matrix)
-        for row_da in row_dominated:
+        #find strictly dominated actions find these actions over the
+        # first axis.
+        row_dominated = find_strictly_dominated_actions(r_matrix)
+        col_dominated = find_strictly_dominated_actions(c_matrix.T)
+        if len(row_dominated) > 0:
             unchanged = False
-            r_action_mask[row_da] = False
-            r_matrix = np.delete(r_matrix, row_da, axis=0)
-            c_matrix = np.delete(c_matrix, row_da, axis=0)
-        for col_da in col_dominated:
+            #breakpoint()
+            r_matrix = np.delete(r_matrix, row_dominated, axis=0)
+            c_matrix = np.delete(c_matrix, row_dominated, axis=0)
+            r_actions = np.delete(r_actions, row_dominated)
+        if len(col_dominated) > 0:
             unchanged = False
-            c_actions_mask[col_da] = False
-            r_matrix = np.delete(r_matrix, col_da, axis=1)
-            c_matrix = np.delete(c_matrix, col_da, axis=1)
+            r_matrix = np.delete(r_matrix, col_dominated, axis=1)
+            c_matrix = np.delete(c_matrix, col_dominated, axis=1)
+            c_actions = np.delete(c_actions, col_dominated)
         if unchanged:
             break
-    r_actions = np.arange(row_matrix.shape[0])[r_action_mask]
-    c_actions = np.arange(row_matrix.shape[1])[c_actions_mask]
     return r_matrix, c_matrix, r_actions, c_actions
 
 
 def main() -> None:
     pass
-   
+
+
 if __name__ == '__main__':
     main()

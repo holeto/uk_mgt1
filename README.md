@@ -1,1 +1,1 @@
-My personal repo, containing implementation of the tasks from https://github.com/lifrordi/game_theory_2024.
+My implementation of the tasks from https://github.com/lifrordi/algorithmic_game_theory. 
