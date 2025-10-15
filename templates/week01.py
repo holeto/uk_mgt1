@@ -27,9 +27,6 @@ def evaluate_general_sum(
     np.ndarray
         A vector of expected utilities of the players
     """
-    print(f"Row strategy {row_strategy}")
-    print(f"Col strategy {col_strategy}")
-    print(f"Row matrix >= 0 indices: {(row_matrix >= 0).nonzero()}")
 
     #Broadcast the row strategy over the columns
     # and the column strategy over the rows

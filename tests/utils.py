@@ -1,29 +1,34 @@
-from collections.abc import Generator
+import functools
+from collections.abc import Callable, Generator
 
 import numpy as np
 
 
-def create_general_sum_game(rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+def create_general_sum_game(
+    max_size: int, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
     """Generate a random two-player general-sum game."""
 
-    num_rows = rng.integers(2, 100, None, np.int32)
-    num_cols = rng.integers(2, 100, None, np.int32)
+    num_rows = rng.integers(2, max_size, None, np.int32)
+    num_cols = rng.integers(2, max_size, None, np.int32)
 
     min_utility = rng.integers(-100, 75, None, np.int32)
     max_utility = rng.integers(min_utility + 1, 100, None, np.int32)
     row_matrix = rng.integers(min_utility, max_utility, (num_rows, num_cols), np.int32)
+    row_matrix = row_matrix + 1e-5 * rng.random((num_rows, num_cols))
 
     min_utility = rng.integers(-100, 75, None, np.int32)
     max_utility = rng.integers(min_utility + 1, 100, None, np.int32)
     col_matrix = rng.integers(min_utility, max_utility, (num_rows, num_cols), np.int32)
+    col_matrix = col_matrix + 1e-5 * rng.random((num_rows, num_cols))
 
     return row_matrix, col_matrix
 
 
-def create_zero_sum_game(rng: np.random.Generator) -> np.ndarray:
+def create_zero_sum_game(max_size: int, rng: np.random.Generator) -> np.ndarray:
     """Generate a random two-player zero-sum game."""
 
-    return create_general_sum_game(rng)[0]
+    return create_general_sum_game(max_size, rng)[0]
 
 
 def create_game_with_dominated_strategies(
@@ -75,57 +80,117 @@ def create_game_with_dominated_strategies(
     return row_matrix, col_matrix
 
 
-def create_pure_strategy(num_actions: int, rng: np.random.Generator) -> np.ndarray:
-    """Generate a random pure strategy."""
+def create_random_strategy(num_actions: int, rng: np.random.Generator) -> np.ndarray:
+    def _create_random_pure_strategy(num_actions, rng):
+        strategy = np.zeros(num_actions, np.float32)
+        index = rng.integers(0, num_actions, None, np.int32)
+        strategy[index] = 1.0
 
-    strategy = np.zeros(num_actions, np.float32)
-    index = rng.integers(0, num_actions, None, np.int32)
-    strategy[index] = 1.0
+        return strategy
 
-    return strategy
+    def _create_random_mixed_strategy(num_actions, rng):
+        strategy = rng.random(num_actions).astype(np.float32)
+        strategy = strategy / np.sum(strategy)
 
+        return strategy
 
-def create_mixed_strategy(num_actions: int, rng: np.random.Generator) -> np.ndarray:
-    """Generate a random mixed strategy."""
-
-    strategy = rng.random(num_actions).astype(np.float32)
-    strategy = strategy / np.sum(strategy)
-
-    return strategy
+    if rng.random() < 0.5:
+        return _create_random_pure_strategy(num_actions, rng)
+    else:
+        return _create_random_mixed_strategy(num_actions, rng)
 
 
-def parameterize_general_sum_tests(rng: np.random.Generator) -> Generator:
-    while True:
-        row_matrix, col_matrix = create_general_sum_game(rng)
+def parameterize_classical_tests(zero_sum_only: bool, rng: np.random.Generator) -> Generator:
+    games = {
+        'prisoners_dilemma': (
+            np.array([[-1, -3], [0, -2]], np.int32),
+            np.array([[-1, 0], [-3, -2]], np.int32),
+        ),
+        'battle_of_the_sexes': (
+            np.array([[2, 0], [0, 1]], np.int32),
+            np.array([[1, 0], [0, 2]], np.int32),
+        ),
+        'game_of_chicken': (
+            np.array([[0, -1], [1, -10]], np.int32),
+            np.array([[0, 1], [-1, -10]], np.int32),
+        ),
+        'stag_hunt': (
+            np.array([[4, 0], [3, 3]], np.int32),
+            np.array([[4, 3], [0, 3]], np.int32),
+        ),
+        'harmony': (
+            np.array([[3, 1], [2, 4]], np.int32),
+            np.array([[3, 1], [2, 4]], np.int32),
+        ),
+        'coordination': (
+            np.array([[1, 0], [0, 1]], np.int32),
+            np.array([[1, 0], [0, 1]], np.int32),
+        ),
+        'shapley': (
+            np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]], np.int32),
+            np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]], np.int32),
+        ),
+        'rock_paper_scissors': (
+            np.array([[0, -1, 1], [1, 0, -1], [-1, 1, 0]], np.int32),
+            np.array([[0, 1, -1], [-1, 0, 1], [1, -1, 0]], np.int32),
+        ),
+        'matching_pennies': (
+            np.array([[1, -1], [-1, 1]], np.int32),
+            np.array([[-1, 1], [1, -1]], np.int32),
+        ),
+    }
 
-        if rng.random() < 0.5:
-            # 50% of the time, use a pure strategy
-            row_strategy = create_pure_strategy(row_matrix.shape[0], rng)
-            col_strategy = create_pure_strategy(col_matrix.shape[1], rng)
-        else:
-            # 50% of the time, use a mixed strategy
-            row_strategy = create_mixed_strategy(row_matrix.shape[0], rng)
-            col_strategy = create_mixed_strategy(col_matrix.shape[1], rng)
+    for row_matrix, col_matrix in games.values():
+        if zero_sum_only and not np.all(col_matrix == -row_matrix):
+            continue
+
+        row_strategy = create_random_strategy(row_matrix.shape[0], rng)
+        col_strategy = create_random_strategy(col_matrix.shape[1], rng)
 
         yield row_matrix, col_matrix, row_strategy, col_strategy
 
 
-def parameterize_zero_sum_tests(rng: np.random.Generator) -> Generator:
+def parameterize_random_general_sum_tests(max_size: int, rng: np.random.Generator) -> Generator:
     while True:
-        row_matrix = create_zero_sum_game(rng)
+        row_matrix, col_matrix = create_general_sum_game(max_size, rng)
 
-        if rng.random() < 0.5:
-            # 50% of the time, use a pure strategy
-            row_strategy = create_pure_strategy(row_matrix.shape[0], rng)
-            col_strategy = create_pure_strategy(row_matrix.shape[1], rng)
-        else:
-            # 50% of the time, use a mixed strategy
-            row_strategy = create_mixed_strategy(row_matrix.shape[0], rng)
-            col_strategy = create_mixed_strategy(row_matrix.shape[1], rng)
+        row_strategy = create_random_strategy(row_matrix.shape[0], rng)
+        col_strategy = create_random_strategy(col_matrix.shape[1], rng)
+
+        yield row_matrix, col_matrix, row_strategy, col_strategy
+
+
+def parameterize_random_zero_sum_tests(max_size: int, rng: np.random.Generator) -> Generator:
+    while True:
+        row_matrix = create_zero_sum_game(max_size, rng)
+
+        row_strategy = create_random_strategy(row_matrix.shape[0], rng)
+        col_strategy = create_random_strategy(row_matrix.shape[1], rng)
 
         yield row_matrix, -row_matrix, row_strategy, col_strategy
 
 
-def parameterize_dominance_tests(rng: np.random.Generator) -> Generator:
+def parameterize_random_dominance_tests(rng: np.random.Generator) -> Generator:
     while True:
-        yield create_game_with_dominated_strategies(rng)
+        row_matrix, col_matrix = create_game_with_dominated_strategies(rng)
+
+        # Not needed for dominance testing, but included to keep the interface consistent
+        row_strategy = create_random_strategy(row_matrix.shape[0], rng)
+        col_strategy = create_random_strategy(col_matrix.shape[1], rng)
+
+        yield row_matrix, col_matrix, row_strategy, col_strategy
+
+
+def cache_data_stream_per_function(fixture_function: Callable) -> Callable:
+    cache = {}
+
+    @functools.wraps(fixture_function)
+    def wrapper(request, rng):
+        test_func_name = request.node.originalname
+
+        if test_func_name not in cache:
+            cache[test_func_name] = fixture_function(request, rng)
+
+        return cache[test_func_name]
+
+    return wrapper
