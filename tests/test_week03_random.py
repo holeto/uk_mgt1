@@ -52,6 +52,9 @@ def test_compute_deltas(
 
     row_delta, col_delta = week03.compute_deltas(row_matrix, col_matrix, row_strategy, col_strategy)
 
+    assert row_delta.dtype == np.float64, 'Incorrect dtype!'
+    assert col_delta.dtype == np.float64, 'Incorrect dtype!'
+
     ndarrays_regression.check(
         {'row_delta': row_delta, 'col_delta': col_delta},
         f'{request.node.originalname}{request.node.callspec.indices["general_sum_data_stream"]}',
@@ -67,6 +70,8 @@ def test_compute_nash_conv(
     row_matrix, col_matrix, row_strategy, col_strategy = next(general_sum_data_stream)
 
     nash_conv = week03.compute_nash_conv(row_matrix, col_matrix, row_strategy, col_strategy)
+
+    assert nash_conv.dtype == np.float64, 'Incorrect dtype!'
 
     ndarrays_regression.check(
         {'nash_conv': nash_conv},
@@ -86,6 +91,8 @@ def test_compute_exploitability(
         row_matrix, col_matrix, row_strategy, col_strategy
     )
 
+    assert exploitability.dtype == np.float64, 'Incorrect dtype!'
+
     ndarrays_regression.check(
         {'exploitability': exploitability},
         f'{request.node.originalname}{request.node.callspec.indices["general_sum_data_stream"]}',
@@ -103,6 +110,12 @@ def test_fictitious_play(
     strategies = week03.fictitious_play(row_matrix, col_matrix, num_iters=1000, naive=False)
     final_exploitability = week03.compute_exploitability(row_matrix, col_matrix, *strategies[-1])
 
+    for row_strategy, col_strategy in strategies:
+        assert row_strategy.dtype == np.float64, 'Incorrect dtype!'
+        assert col_strategy.dtype == np.float64, 'Incorrect dtype!'
+
+    assert final_exploitability.dtype == np.float64, 'Incorrect dtype!'
+
     ndarrays_regression.check(
         {'final_exploitability': final_exploitability},
         f'{request.node.originalname}{request.node.callspec.indices["zero_sum_data_stream"]}',
@@ -119,6 +132,12 @@ def test_fictitious_play_naive(
 
     strategies = week03.fictitious_play(row_matrix, col_matrix, num_iters=1000, naive=True)
     final_exploitability = week03.compute_exploitability(row_matrix, col_matrix, *strategies[-1])
+
+    for row_strategy, col_strategy in strategies:
+        assert row_strategy.dtype == np.float64, 'Incorrect dtype!'
+        assert col_strategy.dtype == np.float64, 'Incorrect dtype!'
+
+    assert final_exploitability.dtype == np.float64, 'Incorrect dtype!'
 
     ndarrays_regression.check(
         {'final_exploitability': final_exploitability},

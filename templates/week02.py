@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from templates.week01 import calculate_best_response_against_row, evaluate_zero_sum
 from scipy.optimize import linprog
-from itertools import combinations
 
 
 def plot_best_response_value_function(row_matrix: np.ndarray, step_size: float) -> None:
