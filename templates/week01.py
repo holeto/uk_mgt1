@@ -117,7 +117,7 @@ def calculate_best_response_against_col(
 
 def evaluate_row_against_best_response(
     row_matrix: np.ndarray, col_matrix: np.ndarray, row_strategy: np.ndarray
-) -> np.float32:
+) -> np.float64:
     """Compute the utility of the row player when playing against a best response strategy.
 
     Parameters
@@ -142,7 +142,7 @@ def evaluate_row_against_best_response(
 
 def evaluate_col_against_best_response(
     row_matrix: np.ndarray, col_matrix: np.ndarray, col_strategy: np.ndarray
-) -> np.float32:
+) -> np.float64:
     """Compute the utility of the column player when playing against a best response strategy.
 
     Parameters
@@ -198,7 +198,7 @@ def find_strictly_dominated_actions(matrix: np.ndarray) -> np.ndarray:
         # of the oponent.
         if np.any(np.sum(a_row[None, ...] >= rows_except_a, axis=-1) == 0):
             dominated_actions.append(a)
-    return np.array(dominated_actions, dtype=np.int32)
+    return np.array(dominated_actions, dtype=np.int64)
 
 
 def iterated_removal_of_dominated_strategies(

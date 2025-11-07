@@ -129,7 +129,7 @@ def fictitious_play(
     per_player_actions = np.array([row_actions, col_actions])[..., None]
     valid_action_indices = np.tile(np.arange(max_actions), (num_players, 1)) < per_player_actions
 
-    action_frequencies = np.zeros((num_players, max_actions), dtype=np.int32) + valid_action_indices
+    #action_frequencies = np.zeros((num_players, max_actions), dtype=np.int32) + valid_action_indices
     #For now we initialize as the best response 
     # to the uniform strategy of oponent
     row_uniform_br = np.pad(calculate_best_response_against_col(row_matrix, np.ones(col_actions) / col_actions), (0, max_actions - row_actions), constant_values=0)
@@ -138,7 +138,7 @@ def fictitious_play(
     #avg_strategies = last_played.copy()
     #uniform initialization
     avg_strategies = valid_action_indices / valid_action_indices.sum(axis=-1, keepdims=True)
-    print(f"Init action frequncies {action_frequencies}, row_actions {row_actions}, col_action {col_actions}")
+    #print(f"Init action frequncies {action_frequencies}, row_actions {row_actions}, col_action {col_actions}")
     for i in range(num_iters):
         #action_frequencies = action_frequencies + last_played
         avg_strategies = ((1 - (1 / (i + 1))) * avg_strategies + (1 / (i + 1)) * last_played)

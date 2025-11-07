@@ -3,13 +3,14 @@ import sys
 from collections.abc import Generator
 
 sys.path.append('solutions')
+sys.path.append("../")
 
 import numpy as np
 import pytest
 from pytest import FixtureRequest
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
-import week01
+import templates.week01 as week01
 from utils import (
     cache_data_stream_per_function,
     parameterize_random_dominance_tests,
