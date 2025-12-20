@@ -321,7 +321,8 @@ def compute_best_response(efg: EFG, player: int, depth_behaviorals: Iterable[np.
 
 
 
-def compute_average_strategy(efg: EFG, behaviorals_first: Iterable[np.ndarray], behaviorals_second: Iterable[np.ndarray], t: int,  player:int = -1):
+def compute_average_strategy(efg: EFG, behaviorals_first: Iterable[np.ndarray], behaviorals_second: Iterable[np.ndarray], 
+                             t: int,  player:int = -1, linear = False):
     """Compute a weighted average of a pair of behavioural strategies.
     If a valid player is given (in range [0, num_players)), compute the averaging only for him"""
     reaches_first, realizations_first = realization_plans(efg, behaviorals_first)
@@ -355,8 +356,15 @@ def compute_average_strategy(efg: EFG, behaviorals_first: Iterable[np.ndarray], 
             # For the first, invalid infoset this will corectly keep zero reach.
             r_first_iset, r_second_iset = np.zeros(num_isets), np.zeros(num_isets)
             r_first_iset[isets], r_second_iset[isets] = r_first, r_second
-            first_weighted_b = (1 - (1 / (t + 1))) * r_first_iset[..., None] * b_first
-            second_weighted_b = (1 / (t + 1)) * r_second_iset[..., None] * b_second
+            #for linear averaging, we weigh the component at timestep t
+            # additionally by t, hence we linearly increase the weight
+            # of the average components
+            if linear:
+                mult = 2 / (t + 2)
+            else:
+                mult = 1 / (t + 1)
+            first_weighted_b =  (1 - mult) * r_first_iset[..., None] * b_first
+            second_weighted_b =  mult * r_second_iset[..., None] * b_second
             pl_avg_behaviorals = first_weighted_b + second_weighted_b 
             #Now renormalize, except when the reaches are 0
             normalization = np.sum(pl_avg_behaviorals, axis=-1, keepdims=True)
@@ -446,7 +454,7 @@ def fictitous_play(efg: EFG, num_iters: int = 1000) -> Iterable[Iterable[np.ndar
 
 
 
-def compute_exploitability(efg: EFG, behaviorals_sequence: Iterable[Iterable[np.ndarray]], algorithm_name:str, save_dir: str = "plots/efg"):
+def compute_exploitability(efg: EFG, behaviorals_sequence: Iterable[Iterable[Iterable[np.ndarray]]], algorithm_name:str, save_dir: str = "plots/efg"):
     """Compute and plot the exploitability of a sequence of strategy profiles."""
     exploitabilities = []
     i = 0
