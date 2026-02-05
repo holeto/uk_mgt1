@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from templates.week07 import *
 
+
 from copy import deepcopy
 
 f32 = np.float32
@@ -47,7 +48,7 @@ def cfr_depth_update(efg: EFG,depth_reaches: np.ndarray, next_depth_values: np.n
 
     current_actions = efg.depth_history_actions[d]
     next_histories = efg.depth_history_next_history[d]
-    action_utilities = efg.depth_history_utility[d]
+    all_action_utilities = efg.depth_history_utility[d]
     new_values = np.zeros((H_d, efg.num_players))
 
     #-1 is the chance player
@@ -62,14 +63,14 @@ def cfr_depth_update(efg: EFG,depth_reaches: np.ndarray, next_depth_values: np.n
 
         pl_actions = current_actions[player_mask]
         pl_next_histories = next_histories[player_mask][..., None]
-        action_utilities = action_utilities[player_mask]
+        action_utilities = all_action_utilities[player_mask]
 
         action_values = next_depth_values[np.maximum(0, pl_next_histories.ravel())]
-        action_values = action_values.reshape((H_d, efg.num_actions, efg.num_players))
+        action_values = action_values.reshape((np.sum(player_mask), efg.num_actions, efg.num_players))
         action_utilities = np.where(pl_next_histories == -1, action_utilities, action_values)
         #Propagate the value upwards
         player_iset = efg.depth_isets[d][player_mask]
-        per_history_strategies = depth_strategies[pl][player_iset] if pl >= 0 else efg.depth_history_chance_probabilities[d]
+        per_history_strategies = depth_strategies[pl][player_iset] if pl >= 0 else efg.depth_history_chance_probabilities[d][player_mask]
         new_values[player_mask] = np.sum(action_utilities * per_history_strategies[..., None], axis=-2)
         #For alternating updates, do not update
         # the regrets for the other players
@@ -102,10 +103,10 @@ def cfr(efg: EFG, num_iterations:int) -> list[list[list[np.ndarray]]]:
 
     cumulative_regrets = [[np.zeros(pl.shape, dtype=f32) for pl in d] for d in efg.depth_iset_legal]
     
-    per_iter_averages = []
-    averages = uniform_strategy(efg)
+    cumulative_strategies = [[np.zeros(pl.shape, dtype=f32) for pl in d] for d in efg.depth_iset_legal]
 
-    current_strategies = deepcopy(averages)
+    current_strategies = normalize_strategy(efg, cumulative_strategies)
+    per_iter_averages = [current_strategies]
 
     for it in range(num_iterations):
         #Propagate the reaches and realization plans
@@ -121,8 +122,8 @@ def cfr(efg: EFG, num_iterations:int) -> list[list[list[np.ndarray]]]:
             for pl in range(efg.num_players):
                 cumulative_regrets[d][pl] += regrets[pl]
                 current_strategies[d][pl] = regret_matching(cumulative_regrets[d][pl])
-        averages = compute_average_strategy(efg, averages, current_strategies, it + 1)
-        per_iter_averages.append(averages)
+        cumulative_strategies = update_cumulative_strategy(efg, cumulative_strategies, current_strategies, it + 1)
+        per_iter_averages.append(normalize_strategy(efg, cumulative_strategies))
     return per_iter_averages    
 
 
@@ -133,10 +134,11 @@ def cfr_plus(efg: EFG, num_iterations: int) -> list[list[list[np.ndarray]]]:
 
     cumulative_regrets = [[np.zeros(pl.shape, dtype=f32) for pl in d] for d in efg.depth_iset_legal]
     
-    per_iter_averages = []
-    averages = uniform_strategy(efg)
+    cumulative_strategies = [[np.zeros(pl.shape, dtype=f32) for pl in d] for d in efg.depth_iset_legal]
+    
 
-    current_strategies = deepcopy(averages)
+    current_strategies = normalize_strategy(efg, cumulative_strategies)
+    per_iter_averages = [current_strategies]
 
     for it in range(num_iterations):
         #Alternating updates, always update
@@ -157,18 +159,30 @@ def cfr_plus(efg: EFG, num_iterations: int) -> list[list[list[np.ndarray]]]:
                 cumulative_regrets[d][pl] = np.maximum(0, cumulative_regrets[d][pl] + regrets[pl])
                 current_strategies[d][pl] = regret_matching(cumulative_regrets[d][pl])
         #Make sure to use the linear averaging
-        averages = compute_average_strategy(efg, averages, current_strategies, it + 1, linear=True)
-        per_iter_averages.append(averages)
+        cumulative_strategies = update_cumulative_strategy(efg, cumulative_strategies, current_strategies, it + 1, multcoeff=1.0)
+        per_iter_averages.append(normalize_strategy(efg, cumulative_strategies))
     return per_iter_averages    
 
-
-def main() -> None:
+def test_kuhn():
     kuhn = KuhnPoker()
     efg = traverse_tree(kuhn)
-    cfr_averages = cfr(efg, num_iterations=10)
-    compute_exploitability(efg, cfr_averages, "CFR")
-    cfr_plus_averages = cfr_plus(efg, num_iterations=10)
-    compute_exploitability(efg, cfr_plus_averages, "CFRplus")
+    cfr_averages = cfr(efg, num_iterations=500)
+    compute_exploitability(efg, cfr_averages, "CFR_kuhn")
+    cfr_plus_averages = cfr_plus(efg, num_iterations=500)
+    compute_exploitability(efg, cfr_plus_averages, "CFR+_kuhn")
+
+def test_leduc():
+    leduc = LeducPoker()
+    efg = traverse_tree(leduc)
+    cfr_averages = cfr(efg, num_iterations=500)
+    compute_exploitability(efg, cfr_averages, "CFR_leduc")
+    cfr_plus_averages = cfr_plus(efg, num_iterations=500)
+    compute_exploitability(efg, cfr_plus_averages, "CFR+_leduc")
+
+def main() -> None:
+    test_kuhn()
+    test_leduc()
+    
 
 
 if __name__ == '__main__':

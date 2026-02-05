@@ -27,8 +27,10 @@ from copy import deepcopy
 
 from pgx import Env
 from templates.kuhn_poker import State, KuhnPoker
+from templates.leduc_poker import LeducPoker
 
 i32 = np.int32
+f32 = np.float32
 
 @dataclass
 class EFG():
@@ -215,7 +217,7 @@ def uniform_strategy(efg: EFG):
     depth_behaviorals = []
     for d in range(efg.max_depth):
         iset_legals = efg.depth_iset_legal[d]
-        uniform_behaviorals = [iset_legals[pl] / np.sum(iset_legals[pl], axis=-1, keepdims=True) for pl in range(efg.num_players)]
+        uniform_behaviorals = [(iset_legals[pl] / np.sum(iset_legals[pl], axis=-1, keepdims=True)).astype(f32) for pl in range(efg.num_players)]
         depth_behaviorals.append(uniform_behaviorals)
     return depth_behaviorals
 
@@ -321,18 +323,31 @@ def compute_best_response(efg: EFG, player: int, depth_behaviorals: Iterable[np.
 
 
 
-def compute_average_strategy(efg: EFG, behaviorals_first: Iterable[np.ndarray], behaviorals_second: Iterable[np.ndarray], 
-                             t: int,  player:int = -1, linear = False):
-    """Compute a weighted average of a pair of behavioural strategies.
-    If a valid player is given (in range [0, num_players)), compute the averaging only for him"""
-    reaches_first, realizations_first = realization_plans(efg, behaviorals_first)
-    reaches_second, realizations_second = realization_plans(efg, behaviorals_second)
-    averaged_behaviorals = []
+def update_cumulative_strategy(efg: EFG, cumulative_behaviorals: Iterable[np.ndarray], current_behaviorals: Iterable[np.ndarray], 
+                             t: int,  player:int = -1, multcoeff: float = 0):
+    """Update our current cumulative strategy, by adding to it the reach weighted
+    strategy of the current iteration
+
+    Args:
+        efg (EFG): The game
+        cumulative_behaviorals (Iterable[np.ndarray]): Our current cumulative strategies
+        current_behaviorals (Iterable[np.ndarray]): Our strategies in the current iteration
+        t (int): The timestep
+        player (int, optional): Which player to average the behaviorals for. -1 signifies to update for all players Defaults to -1.
+        multcoeff (float, optional): The gamma parameter in DCFR averaging. 0 means uniform averaging, 1 linear averaging. Defaults to 0.
+
+    Returns:
+        _type_: _description_
+    """
+    cur_reaches, cur_realizations = realization_plans(efg, current_behaviorals)
+    new_cumulative_behaviorals = []
     player_invalid = player < 0 or player >= efg.num_players
-    d = 0
-    for b_first, b_second, r_first, r_second in zip(behaviorals_first, behaviorals_second, reaches_first, reaches_second):
+    for d in range(efg.max_depth):
         cur_player = efg.depth_history_player[d]
-        averaged_behaviorals.append([])
+        cur_depth_reaches = cur_reaches[d]
+        cur_depth_behaviorals = current_behaviorals[d]
+        cum_depth_behaviorals = cumulative_behaviorals[d]
+        new_cumulative_behaviorals.append([])
         #Get the reaches for the correct player
         #Change the reaches from per history to per iset
         for pl in range(efg.num_players):
@@ -340,12 +355,12 @@ def compute_average_strategy(efg: EFG, behaviorals_first: Iterable[np.ndarray], 
             mask = cur_player  == pl
             if not player_equal or np.sum(mask) == 0:
                 #Just so the other players have something for the invalid iset as well to keep consistent shapes
-                averaged_behaviorals[d].append(efg.depth_iset_legal[d][pl] / np.sum(efg.depth_iset_legal[d][pl], axis=-1, keepdims=True))
+                new_cumulative_behaviorals[d].append(cum_depth_behaviorals[pl])
                 continue
             isets = efg.depth_isets[d][mask].ravel()
-            r_first, r_second = r_first[pl][mask], r_second[pl][mask]
-            b_first, b_second = b_first[pl], b_second[pl]
-            num_isets = b_first.shape[0]
+            player_reaches = cur_depth_reaches[pl][mask]
+            player_cur_behaviorals, player_cum_behaviorals = cur_depth_behaviorals[pl], cum_depth_behaviorals[pl]
+            num_isets = player_cum_behaviorals.shape[0]
             #Here we take advantage of the trick
             # that when multiple values are assigned to
             # the same index, the last one wins. 
@@ -354,24 +369,30 @@ def compute_average_strategy(efg: EFG, behaviorals_first: Iterable[np.ndarray], 
             # otherwise we would multiply the reaches with the amount
             # of histories in them (due to perfect recall).
             # For the first, invalid infoset this will corectly keep zero reach.
-            r_first_iset, r_second_iset = np.zeros(num_isets), np.zeros(num_isets)
-            r_first_iset[isets], r_second_iset[isets] = r_first, r_second
-            #for linear averaging, we weigh the component at timestep t
-            # additionally by t, hence we linearly increase the weight
-            # of the average components
-            if linear:
-                mult = 2 / (t + 2)
-            else:
-                mult = 1 / (t + 1)
-            first_weighted_b =  (1 - mult) * r_first_iset[..., None] * b_first
-            second_weighted_b =  mult * r_second_iset[..., None] * b_second
-            pl_avg_behaviorals = first_weighted_b + second_weighted_b 
-            #Now renormalize, except when the reaches are 0
-            normalization = np.sum(pl_avg_behaviorals, axis=-1, keepdims=True)
-            pl_avg_behaviorals = pl_avg_behaviorals / (normalization + (normalization == 0)) 
-            averaged_behaviorals[d].append(pl_avg_behaviorals)
-        d += 1
-    return averaged_behaviorals
+            r_iset= np.zeros(num_isets)
+            r_iset[isets] =  player_reaches
+            mult = (t / (t + 1)) ** multcoeff
+            new_cumulative_behaviorals[d].append(mult * player_cum_behaviorals + r_iset[..., None] * player_cur_behaviorals)
+    return new_cumulative_behaviorals
+
+def normalize_strategy(efg: EFG,behaviorals: Iterable[np.ndarray]):
+    """Ensures that the strategy forms a valid probability distribution at each infoset
+    """
+    normalized_behaviorals = []
+    for d, d_behav in enumerate(behaviorals):
+        normalized_behaviorals.append([])
+        for pl, pl_behav in enumerate(d_behav):
+            normalization = np.sum(pl_behav, axis=-1, keepdims=True)
+            safe_normalization = normalization + (normalization == 0)
+            legals = efg.depth_iset_legal[d][pl]
+            uniform = legals / np.sum(legals, axis=-1, keepdims=True)
+            #Set the strategy to uniform, in the infosets
+            # where it had zero normalization
+            new_behavs = np.where(normalization == 0, uniform, pl_behav / safe_normalization)
+            normalized_behaviorals[d].append(new_behavs.astype(f32))
+    return normalized_behaviorals
+
+
 
 def nash_conv(efg: EFG, behaviorals: Iterable[np.ndarray]):
     """Compute NasConv (sum of incentives to deviate) for the given strategy profile.
@@ -437,16 +458,19 @@ def fictitous_play(efg: EFG, num_iters: int = 1000) -> Iterable[Iterable[np.ndar
         Iterable[Iterable[np.ndarray]]: The sequence of average strategies for all players
         represented as joint behavioral strategy profiles.
     """
-    strategies = []
+    
     #Initialize average strategies uniformly
-    avg_strategies = uniform_strategy(efg)
+    cumulative_strategies = [[np.zeros(pl.shape, dtype=f32) for pl in d] for d in efg.depth_iset_legal]
     #utilities = []
     #And initial strategies as best responses
     # to the uniform strategy of the oponents.
+    avg_strategies = normalize_strategy(efg, cumulative_strategies)
+    strategies = [avg_strategies]
     last_strategies = join_behaviorals(efg, [compute_best_response(efg, pl, avg_strategies)[0] for pl in range(efg.num_players)])
     for it in range(num_iters):
         #utilities.append(evaluate(efg, avg_strategies))
-        avg_strategies = compute_average_strategy(efg, avg_strategies, last_strategies, it + 1)
+        cumulative_strategies = update_cumulative_strategy(efg, cumulative_strategies, last_strategies, it + 1)
+        avg_strategies = normalize_strategy(efg, cumulative_strategies)
         last_strategies = join_behaviorals(efg, [compute_best_response(efg, pl, avg_strategies)[0] for pl in range(efg.num_players)])
         strategies.append(avg_strategies)
     return strategies
@@ -473,6 +497,7 @@ def compute_exploitability(efg: EFG, behaviorals_sequence: Iterable[Iterable[Ite
 
     os.makedirs(save_dir, exist_ok=True)
     plt.savefig(plt_path)
+    print(f"Saved plot at {plt_path}")
     plt.close()
 
 def env_walk(game: KuhnPoker):
@@ -488,20 +513,31 @@ def env_walk(game: KuhnPoker):
     past_first_action = game.step(state, first_action, dummy_key)
     past_second_action = game.step(state, second_action, dummy_key)
 
-def main() -> None:
 
+def test_kuhn():
     # The implementation of the game is a part of a JAX library called `pgx`.
     # You can find more information about it here: https://www.sotets.uk/pgx/kuhn_poker/
     # We wrap the original implementation to add an explicit chance player and convert
     # everything from JAX arrays to Numpy arrays. There's also a JAX version which you
     # can import using `from kuhn_poker import KuhnPoker` if interested ;)
     env = KuhnPoker()
-    #env_walk(env)
 
     efg = traverse_tree(env)
     #breakpoint()
-    average_strategies = fictitous_play(efg, num_iters=1000)
-    compute_exploitability(efg, average_strategies, "fictitous_play")
+    average_strategies = fictitous_play(efg, num_iters=500)
+    compute_exploitability(efg, average_strategies, "fictitous_play_kuhn")
+
+def test_leduc():
+    env = LeducPoker()
+
+    efg = traverse_tree(env)
+    average_strategies = fictitous_play(efg, num_iters=500)
+    compute_exploitability(efg, average_strategies, "fictitous_play_leduc")
+
+def main() -> None:
+    test_kuhn()
+    test_leduc()
+    
 
 if __name__ == '__main__':
     main()
